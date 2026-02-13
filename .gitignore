@@ -78,3 +78,5 @@ renv/staging/
 # OS junk
 .DS_Store
 Thumbs.db
+
+Data/
