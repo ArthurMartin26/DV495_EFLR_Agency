@@ -2,7 +2,13 @@
 # Ethiopia DHS 2016 (IR) - Women's Agency Index (Alkire–Foster style)
 # Author: Arthur Martin 
 # Last updated: Sys.Date()
+
+## need to decide on how to recode 'other.' in reference to who decides 
+## need to recode / account for missing domains as this will effect the total 
+#score
 # ================================================================
+
+
 
 # ---- 0) Packages ----
 library(haven)     # read Stata .dta
@@ -14,6 +20,8 @@ library(purrr)
 library(survey)    # weighted H, A, M0
 library(readr)
 library(haven)
+library(Hmisc)
+library(skimr)
 
 # ---- 1) Parameters ----
 file_path <- "Data/Data_raw/Ethiopia/ET_2016_DHS_Standard/ETIR71FL.DTA"  # <- EDIT THIS
@@ -47,6 +55,8 @@ recode_beating <- function(x) {
     TRUE                 ~ NA_integer_
   )
 }
+
+## need to decide on how to recode other 
 
 # Decision-making v743*: deprived = 1 if no say (husband/other alone)
 # DHS7 codes typically: 1 = respondent alone, 2 = husband alone, 3 = joint, 4 = someone else, 5 = other
@@ -105,16 +115,22 @@ agency_raw <- ir %>%
   )
 
 # ---- 5) Person-specific reweighting to preserve domain totals ----
-A_vars <- c("A_v743a","A_v743b","A_v743c","A_v632","A_v850a")
+A_vars <- c("A_v743a","A_v743b","A_v632","A_v850a")
 B_vars <- c("B_v744a","B_v744b","B_v744c","B_v744d","B_v744e")
 
 # function to create weights that sum to the domain weight for observed items
 mk_domain_weights <- function(df, vars, domain_total_weight) {
-  n_nonmiss <- df %>% select(all_of(vars)) %>% mutate(across(everything(), ~ !is.na(.))) %>%
+  n_nonmiss <- df %>% 
+    select(all_of(vars)) %>%
+    #creates observed matrix is indicator is not NA then 1 if is NA then 0
+    mutate(across(everything(), ~ !is.na(.))) %>%
     transmute(n = rowSums(across(all_of(vars))))
   # Each observed indicator gets equal share of the domain weight; missing get weight 0
-  w <- df %>% select(all_of(vars)) %>%
+  w <- df %>% 
+    select(all_of(vars)) %>%
     mutate(across(everything(), ~ ifelse(!is.na(.), 1, 0))) %>%
+    #for each person how many items were observed, so den_i number of 
+    # non missing indicators in this domain for person i 
     mutate(den = pmax(rowSums(across(all_of(vars))), 0)) %>%
     mutate(across(all_of(vars), ~ ifelse(den > 0, domain_total_weight / den, 0))) %>%
     select(-den)
@@ -140,6 +156,49 @@ agency_scored <- agency_wide %>%
     agency_poor = as.integer(c_score >= k_cutoff)
   ) %>%
   ungroup()
+
+### visualisation 
+library(dplyr)
+library(survey)
+library(ggplot2)
+
+# Survey design (weights only; add ids/strata later if you want)
+des <- svydesign(ids = ~1, weights = ~wt, data = agency_scored)
+
+# Weighted mean + SE by region
+region_means <- svyby(
+  ~c_score,
+  ~region,
+  design = des,
+  FUN = svymean,
+  na.rm = TRUE,
+  vartype = "se"
+) %>%
+  as.data.frame() %>%
+  rename(mean_c_score = c_score, se = se) %>%
+  mutate(
+    region = as.factor(region),
+    ci_low  = mean_c_score - 1.96 * se,
+    ci_high = mean_c_score + 1.96 * se
+  )
+
+# Plot (bars + 95% CI)
+ggplot(region_means, aes(x = region, y = mean_c_score)) +
+  geom_col(fill = "#2C7FB8", alpha = 0.9) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0.2, color = "black") +
+  labs(
+    title = "Average women's agency deprivation score (c_score) by region",
+    subtitle = "Weighted using DHS sampling weights (v005/1e6)",
+    x = "Region",
+    y = "Mean c_score (0 = none, 1 = maximum deprivation)"
+  ) +
+  theme_minimal(base_size = 12)
+
+##==============================================================================
+##============================ Part 2 - aggregation of the deprived scores =====
+
+# this part is not as important for now as we are focused on who is deprived,
+# care less about thier aggregation. 
 
 # ---- 7) AF aggregates: H, A, M0 (weighted) ----
 # H = weighted share agency_poor; 
