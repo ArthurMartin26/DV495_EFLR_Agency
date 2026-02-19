@@ -6,6 +6,15 @@
 ## need to decide on how to recode 'other.' in reference to who decides 
 ## need to recode / account for missing domains as this will effect the total 
 #score
+
+## could add in an ifelse clause where we read in the year and then change the variables
+# due to which edition the survey design is. so set a var == avg(v002) if v002 is 
+# year of survey. Then we have a logic gate which says that if year == 2016 then select
+# vars == 2016 set. so in the recode function and other aspects we set it so we can run the same 
+# file but each year the varaible names change ever so slighty. we can create year vectors!! 
+# so if  year == 2016 then vars = 2016_set, then this applies the set of functions due to the
+# vars in that aspect. 
+
 # ================================================================
 
 
@@ -152,7 +161,7 @@ agency_scored <- agency_wide %>%
   mutate(
     c_score = sum(c_across(all_of(c(A_vars, B_vars))) * 
                     c_across(all_of(paste0(c(A_vars, B_vars), "_w"))), na.rm = TRUE),
-    # If an entire domain is missing, its weight was 0 above; if BOTH domains missing, c_score=0.
+    # If an entire domain is missing, its weight was 0 above if BOTH domains missing, c_score=0.
     agency_poor = as.integer(c_score >= k_cutoff)
   ) %>%
   ungroup()
@@ -162,7 +171,7 @@ library(dplyr)
 library(survey)
 library(ggplot2)
 
-# Survey design (weights only; add ids/strata later if you want)
+# Survey design (weights only add ids/strata later if I Need)
 des <- svydesign(ids = ~1, weights = ~wt, data = agency_scored)
 
 # Weighted mean + SE by region
