@@ -11,6 +11,7 @@ library(haven)
 library(Hmisc)
 library(skimr)
 library(ggplot2)
+library(fixest)
 
 
 ## variable check 

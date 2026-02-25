@@ -7,7 +7,7 @@
 #   
 # only one contraception variable v632
 # 
-# 
+# also dropping vars to ensure consistency 
 # 
 # 
 # ================================================================
@@ -54,8 +54,8 @@ path_in <- paste0(
 
 # file_path <- "Data/Data_raw/Ethiopia/ET_2005_DHS_Standard/ETIR51FL.DTA"  # <- EDIT THIS
 k_cutoff  <- 0.33                    # AF poverty cut-off for agency (changeable)
-domain_wA <- 0.70                    # Decision autonomy domain weight
-domain_wB <- 0.30                    # Attitudes-to-violence domain weight
+domain_wA <- 0.50                    # Decision autonomy domain weight
+domain_wB <- 0.50                    # Attitudes-to-violence domain weight
 
 # Optional: sensitivity grids
 weight_grid <- tibble(
@@ -171,15 +171,15 @@ agency_raw <- ir %>%
     B_v744e = recode_beating(v744e), # burns food
     
     # --- Domain A: Decision autonomy (5 items) ---
-    A_v743a = recode_decision(v743a), # who usually decides healthcare
-    A_v743b = recode_decision(v743b), # final say large purchases
+   # A_v743a = recode_decision(v743a), # who usually decides healthcare
+    A_v743b = recode_decision(v743b) # final say large purchases
     # A_v743c = recode_decision(v743c), # in 2016 this is decision 
-    A_v632  = recode_contra_decision(v632),# decision maker using contraception
-    A_s723c = recode_s723c(s723c)     # can refuse sexual intercourse
+   # A_v632  = recode_contra_decision(v632),# decision maker using contraception
+  #  A_s723c = recode_s723c(s723c)     # can refuse sexual intercourse
   )
 
 # ---- 5) Person-specific reweighting to preserve domain totals ----
-A_vars <- c("A_v743b","A_v632")#"A_s723c","A_v743a",)
+A_vars <- c("A_v743b")#,"A_v632"#"A_s723c","A_v743a",)
 B_vars <- c("B_v744a","B_v744b","B_v744c","B_v744d","B_v744e")
 
 # function to create weights that sum to the domain weight for observed items
@@ -204,7 +204,7 @@ A_w <- mk_domain_weights(agency_raw, A_vars, domain_wA)
 B_w <- mk_domain_weights(agency_raw, B_vars, domain_wB)
 
 # Combine back
-agency_wide <- bind_cols(agency_raw, 
+agency_wide_05 <- bind_cols(agency_raw, 
                          setNames(A_w, paste0(names(A_w), "_w")),
                          setNames(B_w, paste0(names(B_w), "_w")))
 
@@ -212,7 +212,7 @@ agency_wide <- bind_cols(agency_raw,
 # c_i = sum_j  d_ij * w_ij  with domain-preserving reweights
 all_vars <- c(A_vars, B_vars)
 
-agency_scored <- agency_wide %>%
+agency_scored_2005 <- agency_wide_05 %>%
   rowwise() %>%
   mutate(
     n_obs = sum(!is.na(c_across(all_of(all_vars)))),
@@ -233,13 +233,13 @@ agency_scored <- agency_wide %>%
 ###=============================================================================
 
 # Survey design (weights only add ids/strata later if I Need)
-des <- svydesign(ids = ~1, weights = ~wt, data = agency_scored)
+des_05 <- svydesign(ids = ~1, weights = ~wt, data = agency_scored_2005)
 
 # Weighted mean + SE by region
-region_means <- svyby(
+region_means_05 <- svyby(
   ~c_score,
   ~region,
-  design = des,
+  design = des_05,
   FUN = svymean,
   na.rm = TRUE,
   vartype = "se"
@@ -253,7 +253,7 @@ region_means <- svyby(
   )
 
 # Plot (bars + 95% CI)
-plot1 <- ggplot(region_means, aes(x = region, y = mean_c_score)) +
+plot05 <- ggplot(region_means_05, aes(x = region, y = mean_c_score)) +
   geom_col(fill = "#2C7FB8", alpha = 0.9) +
   geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0.2, color = "black") +
   labs(
@@ -262,10 +262,26 @@ plot1 <- ggplot(region_means, aes(x = region, y = mean_c_score)) +
     x = "Region",
     y = "Mean c_score (0 = none, 1 = maximum deprivation)"
   ) +
+  scale_y_continuous(limits = c(0, 0.6)) +
   theme_minimal(base_size = 12)
+
+plot05
 
 ggsave(
   filename = paste0(output_directory, "/Avg_agency_region_2005.png"),
   plot = plot1,
   width = 9, height = 5, dpi = 300
 )
+
+library(survey)
+
+
+### comparison results 
+
+svymean(
+  ~B_v744a + B_v744b + B_v744c + B_v744d + B_v744e,
+  design = des_05, na.rm = TRUE
+)
+
+svymean(~A_v743b, design = des_05, na.rm = TRUE)
+
