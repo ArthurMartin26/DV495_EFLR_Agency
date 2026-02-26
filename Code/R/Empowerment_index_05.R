@@ -54,8 +54,8 @@ path_in <- paste0(
 
 # file_path <- "Data/Data_raw/Ethiopia/ET_2005_DHS_Standard/ETIR51FL.DTA"  # <- EDIT THIS
 k_cutoff  <- 0.33                    # AF poverty cut-off for agency (changeable)
-domain_wA <- 0.50                    # Decision autonomy domain weight
-domain_wB <- 0.50                    # Attitudes-to-violence domain weight
+domain_wA <- 0.5                   # Decision autonomy domain weight
+domain_wB <- 0.5                   # Attitudes-to-violence domain weight
 
 # Optional: sensitivity grids
 weight_grid <- tibble(
@@ -248,6 +248,27 @@ region_means_05 <- svyby(
   rename(mean_c_score = c_score, se = se) %>%
   mutate(
     region = as.factor(region),
+    ci_low  = mean_c_score - 1.96 * se,
+    ci_high = mean_c_score + 1.96 * se
+  )
+
+## look into unweighted 
+
+# Unweighted design (every observation weight = 1)
+des_05_unw <- svydesign(ids = ~1, weights = ~1, data = agency_scored_2005)
+
+region_means_05_unw <- svyby(
+  ~c_score,
+  ~region,
+  design = des_05_unw,
+  FUN = svymean,
+  na.rm = TRUE,
+  vartype = "se"
+) %>%
+  as.data.frame() %>%
+  rename(mean_c_score = c_score, se = se) %>%
+  mutate(
+    region  = as.factor(region),
     ci_low  = mean_c_score - 1.96 * se,
     ci_high = mean_c_score + 1.96 * se
   )

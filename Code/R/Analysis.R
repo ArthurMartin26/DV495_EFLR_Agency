@@ -55,7 +55,7 @@ region_code <- tribble(
 
 treated_region <- c("addis","amhara","dire dawa","oromiya", "tigray" )
 
-
+## we need to add in survey weighting 
 
 baseline <-agency_scored_2000 |> 
   select(c("region", "c_score"))
@@ -110,6 +110,7 @@ m1 <- feols(
 summary(m1)
 
 
+
 ##visualisation - bit tricky as the regional values are factots so have to make them characters first 
 
 plot_df_00 <- region_means_00 %>%
@@ -146,6 +147,12 @@ plot00_comp <- ggplot(plot_df_00, aes(x = region_name, y = mean_c_score, fill = 
 
 plot00_comp
 
+ggsave(
+  filename = paste0(output_directory, "/Avg_agency_region_2000_treated.png"),
+  plot = plot00_comp,
+  width = 9, height = 5, dpi = 300
+)
+
 
 ### DID plot 
 
@@ -155,7 +162,7 @@ plot_df_00 <- region_means_00 %>%
   mutate(treat_group = if_else(region_name_std %in% treated_region_std, "Early treated", "Late treated"),
          region_name = str_to_title(region_name_std))
 
-plot_df_05 <- region_means_05 %>%
+plot_df_05 <- region_means_05%>%
   mutate(region = as.integer(as.character(region)), year = 2005) %>%
   left_join(region_lu, by = c("region" = "region_code")) %>%
   mutate(treat_group = if_else(region_name_std %in% treated_region_std, "Early treated", "Late treated"),
@@ -170,7 +177,7 @@ p_change <- ggplot(plot_both, aes(x = year, y = mean_c_score, group = region_nam
   facet_wrap(~ region_name, ncol = 4) +
   scale_color_manual(values = c("Early treated" = "#D7191C", "Late treated" = "#2C7FB8")) +
   labs(
-    title = "Change in mean agency deprivation by region (2000 → 2005)",
+    title = "Change in UNWEIGHTED mean agency deprivation by region (2000 → 2005)",
     subtitle = "Lower = less deprivation (higher agency). Each panel is a region; colour indicates early vs late treated group.",
     x = "", y = "Mean c_score", color = ""
   ) +
