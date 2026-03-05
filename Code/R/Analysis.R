@@ -28,6 +28,8 @@ if (user == "Arthur.Martin") {
 
 output_directory <- paste0(base_directory, "/Outputs/figures")
 
+source("Code/R/packages and functions.R")
+
 ## run 2000 and 2005 
 source("Code/R/Empowerment_index_2000.R")
 
@@ -57,11 +59,23 @@ treated_region <- c("addis","amhara","dire dawa","oromiya", "tigray" )
 
 ## we need to add in survey weighting 
 
-baseline <-agency_scored_2000 |> 
-  select(c("region", "c_score"))
+# baseline <-agency_scored_2000 |> 
+#   select(c("region", "c_score"))
+# 
+# post <- agency_scored_2005 |> 
+#   select(c("region", "c_score"))
 
-post <- agency_scored_2005 |> 
-  select(c("region", "c_score"))
+
+
+# --- Keep region, outcome, weights, age band ---
+baseline <- agency_scored_2000 %>%
+  select(region, c_score, wt, age_band) %>%
+  mutate(year = 2000, post = 0L)
+
+post <- agency_scored_2005 %>%
+  select(region, c_score, wt, age_band) %>%
+  mutate(year = 2005, post = 1L)
+
 
 # Standardise treated names (lowercase, squish)
 treated_region_std <- treated_region %>%
@@ -74,20 +88,15 @@ region_lu <- region_code %>%
   select(region_code, region_name_std)
 
 # Stack baseline + post into one long panel (2 periods)
-did_df <- bind_rows(
-  baseline %>% transmute(region = as.integer(region),
-                         c_score = c_score,
-                         year = 2000,
-                         post = 0L),
-  post %>% transmute(region = as.integer(region),
-                     c_score = c_score,
-                     year = 2005,
-                     post = 1L)
-) %>%
+
+did_df <- bind_rows(baseline, post) %>%
+  mutate(region = as.integer(region)) %>%
   left_join(region_lu, by = c("region" = "region_code")) %>%
   mutate(
     treated = if_else(region_name_std %in% treated_region_std, 1L, 0L),
-    did = treated * post
+    did = treated * post,
+    # ensure age_band is a factor with a clear reference group
+    age_band = factor(age_band, levels = age_labels)
   )
 
 # Quick checks
@@ -96,19 +105,76 @@ did_df %>% filter(is.na(region_name_std)) %>% distinct(region)
 
 ## run the most basic DiD mainly to observe comparison 
 
-did_lm <- lm(c_score ~ treated + post + treated:post, data = did_df)
-summary(did_lm)
+# did_lm <- lm(c_score ~ treated + post + treated:post, data = did_df)
+# summary(did_lm)
+# 
+# ## run a DiD with clustered Standard Errors 
+# 
+# m1 <- feols(
+#   c_score ~ treated * post,
+#   data = did_df,
+#   cluster = ~ region
+# )
+# 
+# summary(m1)
 
-## run a DiD with clustered Standard Errors 
+### Age band DiD 
 
-m1 <- feols(
-  c_score ~ treated * post,
-  data = did_df,
-  cluster = ~ region
+# Function to run DiD within an age band
+# ---------------------------------------------
+# 1. Split data into age-band subsets manually
+# ---------------------------------------------
+
+df_15_24 <- did_df %>% filter(age_band == "15-24")
+df_25_34 <- did_df %>% filter(age_band == "25-34")
+df_35_49 <- did_df %>% filter(age_band == "35-49")
+
+# ---------------------------------------------
+# 2. Run DiD separately for each age band
+# ---------------------------------------------
+
+mod_15_24 <- feols(c_score ~ treated * post,
+                   data = df_15_24,
+                   weights = ~ wt,
+                   cluster = ~ region)
+
+mod_25_34 <- feols(c_score ~ treated * post,
+                   data = df_25_34,
+                   weights = ~ wt,
+                   cluster = ~ region)
+
+mod_35_49 <- feols(c_score ~ treated * post,
+                   data = df_35_49,
+                   weights = ~ wt,
+                   cluster = ~ region)
+
+# ---------------------------------------------
+# 3. Extract the 'treated:post' coefficient
+# ---------------------------------------------
+
+did_15_24 <- coef(mod_15_24)["treated:post"]
+se_15_24  <- se(mod_15_24)["treated:post"]
+
+did_25_34 <- coef(mod_25_34)["treated:post"]
+se_25_34  <- se(mod_25_34)["treated:post"]
+
+did_35_49 <- coef(mod_35_49)["treated:post"]
+se_35_49  <- se(mod_35_49)["treated:post"]
+
+# ---------------------------------------------
+# 4. Store results in a clean data frame
+# ---------------------------------------------
+
+did_age_results <- tibble::tibble(
+  age_band  = c("15-24", "25-34", "35-49"),
+  estimate  = c(did_15_24, did_25_34, did_35_49),
+  std_error = c(se_15_24, se_25_34, se_35_49)
 )
 
-summary(m1)
+did_age_results
 
+######################################################
+### Exploratory data work ############################
 
 
 ##visualisation - bit tricky as the regional values are factots so have to make them characters first 
@@ -184,3 +250,5 @@ p_change <- ggplot(plot_both, aes(x = year, y = mean_c_score, group = region_nam
   theme_minimal(base_size = 11)
 
 p_change
+
+

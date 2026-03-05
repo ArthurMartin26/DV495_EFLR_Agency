@@ -12,7 +12,7 @@ library(Hmisc)
 library(skimr)
 library(ggplot2)
 library(fixest)
-
+library(broom)
 
 ## variable check 
 var_check <- function(df, x) {

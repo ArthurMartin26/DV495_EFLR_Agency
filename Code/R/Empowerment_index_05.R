@@ -54,8 +54,8 @@ path_in <- paste0(
 
 # file_path <- "Data/Data_raw/Ethiopia/ET_2005_DHS_Standard/ETIR51FL.DTA"  # <- EDIT THIS
 k_cutoff  <- 0.33                    # AF poverty cut-off for agency (changeable)
-domain_wA <- 0.5                   # Decision autonomy domain weight
-domain_wB <- 0.5                   # Attitudes-to-violence domain weight
+domain_wA <- 0                  # Decision autonomy domain weight
+domain_wB <- 1                   # Attitudes-to-violence domain weight
 
 # Optional: sensitivity grids
 weight_grid <- tibble(
@@ -163,6 +163,17 @@ agency_raw <- ir %>%
     region = v024,                # region identifier
     wt,
     
+    
+    # NEW: age and age bands
+    age = as.numeric(v012),
+    age_band = cut(
+      as.numeric(v012),
+      breaks = age_breaks,
+      labels = age_labels,
+      right  = FALSE,   # [15,25), [25,35), [35,50)
+      include.lowest = TRUE
+    ),
+    
     # --- Domain B: Attitudes to wife-beating (5 items) ---
     B_v744a = recode_beating(v744a), # goes out without telling him
     B_v744b = recode_beating(v744b), # neglects the children
@@ -172,27 +183,31 @@ agency_raw <- ir %>%
     
     # --- Domain A: Decision autonomy (5 items) ---
    # A_v743a = recode_decision(v743a), # who usually decides healthcare
-    A_v743b = recode_decision(v743b) # final say large purchases
+  #  A_v743b = recode_decision(v743b) # final say large purchases
     # A_v743c = recode_decision(v743c), # in 2016 this is decision 
    # A_v632  = recode_contra_decision(v632),# decision maker using contraception
   #  A_s723c = recode_s723c(s723c)     # can refuse sexual intercourse
   )
 
 # ---- 5) Person-specific reweighting to preserve domain totals ----
-A_vars <- c("A_v743b")#,"A_v632"#"A_s723c","A_v743a",)
+#A_vars <- c("A_v743b")#,"A_v632"#"A_s723c","A_v743a",)
 B_vars <- c("B_v744a","B_v744b","B_v744c","B_v744d","B_v744e")
 
 # function to create weights that sum to the domain weight for observed items
 mk_domain_weights <- function(df, vars, domain_total_weight) {
   
+  # If no variables in the domain, return a 0-column data frame
+  if (length(vars) == 0) {
+    return(as.data.frame(matrix(nrow = nrow(df), ncol = 0)))
+  }
+  
   obs <- df %>%
     dplyr::select(dplyr::all_of(vars)) %>%
-    dplyr::mutate(dplyr::across(dplyr::everything(), ~ !is.na(.)))  # TRUE if observed
+    dplyr::mutate(dplyr::across(dplyr::everything(), ~ !is.na(.)))
   
-  den <- rowSums(as.matrix(obs))  # count observed in domain, per row
+  den <- rowSums(as.matrix(obs))
   
-  # weights: observed indicators get domain_total_weight/den; missing get 0
-  w <- as.data.frame(obs) * 0  # same shape, all zeros
+  w <- as.data.frame(obs) * 0
   for (j in seq_along(vars)) {
     w[[j]] <- ifelse(obs[[j]] & den > 0, domain_total_weight / den, 0)
   }
@@ -200,17 +215,19 @@ mk_domain_weights <- function(df, vars, domain_total_weight) {
   w
 }
 
-A_w <- mk_domain_weights(agency_raw, A_vars, domain_wA)
+#A_w <- mk_domain_weights(agency_raw, A_vars, domain_wA) ## now empty so returns 0 cols 
 B_w <- mk_domain_weights(agency_raw, B_vars, domain_wB)
 
 # Combine back
 agency_wide_05 <- bind_cols(agency_raw, 
-                         setNames(A_w, paste0(names(A_w), "_w")),
+                        # adds nothing 
                          setNames(B_w, paste0(names(B_w), "_w")))
 
 # ---- 6) Compute AF deprivation score c_i, identify agency-poor ----
 # c_i = sum_j  d_ij * w_ij  with domain-preserving reweights
-all_vars <- c(A_vars, B_vars)
+
+
+all_vars <- c(B_vars) #, B_vars)
 
 agency_scored_2005 <- agency_wide_05 %>%
   rowwise() %>%
@@ -231,6 +248,31 @@ agency_scored_2005 <- agency_wide_05 %>%
 ###=============================================================================
 ###=================================== visualisation ===========================
 ###=============================================================================
+
+
+ind_vars <- c( B_vars)
+
+# Basic NA + distribution summary (unweighted)
+ind_vars <- c( B_vars)
+
+summ_long_unw <- agency_scored_2005 %>%
+  select(all_of(ind_vars)) %>%
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "value") %>%
+  group_by(variable) %>%
+  summarise(
+    n_total = sum(!is.na(value)),
+    n_na    = sum(is.na(value)),
+    pct_na  = 100 * mean(is.na(value)),
+    mean    = mean(value, na.rm = TRUE),
+    sd      = sd(value, na.rm = TRUE),
+    min     = suppressWarnings(min(value, na.rm = TRUE)),
+    max     = suppressWarnings(max(value, na.rm = TRUE)),
+    .groups = "drop"
+  )
+
+summ_long_unw
+
+
 
 # Survey design (weights only add ids/strata later if I Need)
 des_05 <- svydesign(ids = ~1, weights = ~wt, data = agency_scored_2005)
@@ -283,7 +325,7 @@ plot05 <- ggplot(region_means_05, aes(x = region, y = mean_c_score)) +
     x = "Region",
     y = "Mean c_score (0 = none, 1 = maximum deprivation)"
   ) +
-  scale_y_continuous(limits = c(0, 0.6)) +
+  scale_y_continuous(limits = c(0, 1)) +
   theme_minimal(base_size = 12)
 
 plot05
@@ -304,5 +346,5 @@ svymean(
   design = des_05, na.rm = TRUE
 )
 
-svymean(~A_v743b, design = des_05, na.rm = TRUE)
+# svymean(~A_v743b, design = des_05, na.rm = TRUE)
 
